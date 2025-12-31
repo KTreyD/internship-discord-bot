@@ -1,13 +1,13 @@
 
 MAJOR_KEYWORDS = {
     "chemical": ["chemical", "chemical engineer", "aspen", "PFD", "process engineering", "process safety", "reactor", "distillation"],
-    "mechanical": ["mechanical", "mechanical engineer", "CAD", "manufacturing", "solidworks", "thermodynamics"],
+    "mechanical": ["mechanical", "mechanical engineer", "CAD", "manufacturing", "solidworks", "thermodynamics", "HVAC", "turbine", "automotive", "machine design", "fluid dynamics", "heat transfer"],
     "electrical": ["electrical", "electrical engineer", "circuits", "embedded", "electronics", "PCB"],
     "biomedical": ["biomedical", "biomedical engineer", "medical device", "MATLAB", "FDA", "biomechanics"],
     "civil": ["civil", "civil engineer", "AUTOCAD", "stormwater", "structural", "construction", "infrastructure"],
     "industrial": ["industrial", "industrial engineer", "improvement", "root cause", "operations", "supply chain"],
-    "computer": ["embedded systems", "C/C++", "microcontrollers", "RTOS", "firmware"],
-    "petroleum": ["petroleum", "petroleum engineer", "drilling", "well", "reservoir", "oil", "gas"],
+    "computer": ["computer engineering", "embedded systems", "C/C++", "microcontrollers", "RTOS", "firmware", "hardware design", "FPGA"],
+    "petroleum": ["petroleum", "petroleum engineer", "drilling", "reservoir", "oil and gas", "upstream", "downstream"],
     "construction management": ["construction management", "estimating", "subcontractor", "scheduling"],
     "CIS": ["CIS", "network administration", "IT Support", "business applications", "systems administration", "information systems"],
     "MIS": ["MIS", "business analyst", "requirements gathering", "systems analysis", "management information"],

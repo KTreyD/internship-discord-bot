@@ -7,30 +7,77 @@ import os
 import requests
 
 # Load environment variables
-load_dotenv("C:/Users/kuoob/Python Code/job bot/.env")
+load_dotenv("C:/Users/kerry/Python Code/internship-discord-bot/.env")
 TOKEN = os.getenv('DISCORD_TOKEN')
 ADZUNA_APP_ID = os.getenv('ADZUNA_ID')
 ADZUNA_KEY = os.getenv('ADZUNA_KEY')
 
 # Channel IDs mapping
 CHANNEL_IDS = {
-    "mechanical": 1452512955190218844,
-    "electrical": 1452512996621549649,
-    "chemical": 1452513023725010954
+    "chemical": 1454242155307733163,
+    "mechanical": 1454242243803087000,
+    "electrical": 1454242306268987597,
+    "biomedical": 1455476385740226570,
+    "civil": 1455476559715631197,
+    "industrial": 1455476602279428215,
+    "computer": 1455476699952320567,
+    "petroleum": 1455476755237437614,
+    "construction management": 1455476817929572425,
+    "MIS": 1455476841732116685,
+    "CIS": 1455476873143517342,
+    "computer science": 1455476906966126691
 }
 ADZUNA_SEARCH_TERMS = [
     "mechanical engineer intern",
     "electrical engineer intern",
     "chemical engineer intern",
-    #"computer science intern",
-    #"software engineer intern",
-    #"IT intern",
-    #"information systems intern",
-    #"civil engineer intern",
-    #"biomedical engineer intern",
-    #"industrial engineer intern",
-    #"petroleum engineer intern",
-    #"construction management intern"
+    "computer science intern",
+    "software engineer intern",
+    "IT intern",
+    "information systems intern",
+    "civil engineer intern",
+    "biomedical engineer intern",
+    "industrial engineer intern",
+    "petroleum engineer intern",
+    "construction management intern",
+    "software development intern",
+    "data science intern",
+    "machine learning intern",
+    "AI intern",
+    "cybersecurity intern",
+    "network engineer intern",
+    "systems engineer intern",
+    "data engineer intern",
+    "cloud engineer intern",
+    "DevOps intern",
+    "full stack intern",
+    "backend engineer intern",
+    "frontend engineer intern",
+    "mobile developer intern",
+    "embedded systems intern",
+    "hardware engineer intern",
+    "robotics intern",
+    "aerospace engineer intern",
+    "manufacturing engineer intern",
+    "process engineer intern",
+    "quality engineer intern",
+    "project management intern",
+    "product management intern",
+    "environmental engineer intern",
+    "structural engineer intern",
+    "transportation engineer intern",
+    "materials engineer intern",
+    "nuclear engineer intern",
+    "mining engineer intern",
+    "web developer intern",
+    "database administrator intern",
+    "business analyst intern",
+    "systems analyst intern",
+    "infrastructure intern",
+    "automation engineer intern",
+    "control systems intern",
+    "mechatronics intern",
+    "reliability engineer intern"
 ]
 
 # Discord bot setup
@@ -41,9 +88,17 @@ bot = commands.Bot(command_prefix='!', intents=intents)
 @bot.event
 async def on_ready():
     print(f'{bot.user} has connected to Discord!')
+
+    # Initialize database table if it doesn't exist
+    conn = database.create_connection()
+    database.create_table(conn)
+    conn.close()
+    print('Database initialized!')
+
     check_for_jobs.start()  # Start the scheduled loop
 
-@tasks.loop(hours=2)  # Run every 2 hours
+
+@tasks.loop(hours=24)  # Run every 24 hours
 async def check_for_jobs():
     """Scheduled task to check for new jobs"""
     print(f"\n⏰ Checking for new jobs at {discord.utils.utcnow()}")
