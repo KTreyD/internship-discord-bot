@@ -1,7 +1,13 @@
+import os
 import sqlite3
 
+# On Fly.io this is pointed at the mounted volume (e.g. /data/internships.db)
+# so the dedup database survives redeploys instead of resetting on the
+# ephemeral container filesystem and re-posting every job.
+DB_PATH = os.getenv("DB_PATH", "internships.db")
+
 def create_connection():
-    connection = sqlite3.connect('internships.db')
+    connection = sqlite3.connect(DB_PATH)
     return connection
 
 def create_table(connection):

@@ -4,13 +4,14 @@ import discord
 from discord.ext import commands, tasks
 from dotenv import load_dotenv
 import os
-import requests
 
-# Load environment variables
-load_dotenv("C:/Users/kerry/Python Code/internship-discord-bot/.env")
+from sources.adzuna import fetch_all_adzuna_jobs
+from sources.ats import fetch_all_ats_jobs
+from sources.github_repos import fetch_all_github_jobs
+
+# Load environment variables (expects a .env file in the project root)
+load_dotenv()
 TOKEN = os.getenv('DISCORD_TOKEN')
-ADZUNA_APP_ID = os.getenv('ADZUNA_ID')
-ADZUNA_KEY = os.getenv('ADZUNA_KEY')
 
 # Channel IDs mapping
 CHANNEL_IDS = {
@@ -27,58 +28,22 @@ CHANNEL_IDS = {
     "CIS": 1455476873143517342,
     "computer science": 1455476906966126691
 }
-ADZUNA_SEARCH_TERMS = [
-    "mechanical engineer intern",
-    "electrical engineer intern",
-    "chemical engineer intern",
-    "computer science intern",
-    "software engineer intern",
-    "IT intern",
-    "information systems intern",
-    "civil engineer intern",
-    "biomedical engineer intern",
-    "industrial engineer intern",
-    "petroleum engineer intern",
-    "construction management intern",
-    "software development intern",
-    "data science intern",
-    "machine learning intern",
-    "AI intern",
-    "cybersecurity intern",
-    "network engineer intern",
-    "systems engineer intern",
-    "data engineer intern",
-    "cloud engineer intern",
-    "DevOps intern",
-    "full stack intern",
-    "backend engineer intern",
-    "frontend engineer intern",
-    "mobile developer intern",
-    "embedded systems intern",
-    "hardware engineer intern",
-    "robotics intern",
-    "aerospace engineer intern",
-    "manufacturing engineer intern",
-    "process engineer intern",
-    "quality engineer intern",
-    "project management intern",
-    "product management intern",
-    "environmental engineer intern",
-    "structural engineer intern",
-    "transportation engineer intern",
-    "materials engineer intern",
-    "nuclear engineer intern",
-    "mining engineer intern",
-    "web developer intern",
-    "database administrator intern",
-    "business analyst intern",
-    "systems analyst intern",
-    "infrastructure intern",
-    "automation engineer intern",
-    "control systems intern",
-    "mechatronics intern",
-    "reliability engineer intern"
-]
+
+# Embed accent color per major, used to make the Discord "job card" scannable at a glance
+MAJOR_COLORS = {
+    "chemical": discord.Color.dark_gold(),
+    "mechanical": discord.Color.dark_grey(),
+    "electrical": discord.Color.gold(),
+    "biomedical": discord.Color.red(),
+    "civil": discord.Color.dark_orange(),
+    "industrial": discord.Color.teal(),
+    "computer": discord.Color.blurple(),
+    "petroleum": discord.Color.dark_green(),
+    "construction management": discord.Color.orange(),
+    "MIS": discord.Color.purple(),
+    "CIS": discord.Color.magenta(),
+    "computer science": discord.Color.blue(),
+}
 
 # Discord bot setup
 intents = discord.Intents.default()
@@ -91,8 +56,10 @@ async def on_ready():
 
     # Initialize database table if it doesn't exist
     conn = database.create_connection()
-    database.create_table(conn)
-    conn.close()
+    try:
+        database.create_table(conn)
+    finally:
+        conn.close()
     print('Database initialized!')
 
     check_for_jobs.start()  # Start the scheduled loop
@@ -100,25 +67,19 @@ async def on_ready():
 
 @tasks.loop(hours=24)  # Run every 24 hours
 async def check_for_jobs():
-    """Scheduled task to check for new jobs"""
+    """Scheduled task to check for new jobs across all sources"""
     print(f"\n⏰ Checking for new jobs at {discord.utils.utcnow()}")
-    
-    jobs = fetch_all_adzuna_jobs()
-    
+
+    jobs = fetch_all_adzuna_jobs() + fetch_all_github_jobs() + fetch_all_ats_jobs()
+
     job_count = 0
-    for adzuna_job in jobs:
-        try: 
-            job_data = {
-                "url": adzuna_job["redirect_url"],
-                "title": adzuna_job["title"],
-                "company": adzuna_job["company"]["display_name"],
-                "description": adzuna_job.get("description", "")
-            }
-            await process_job(job_data)
+    for job in jobs:
+        try:
+            await process_job(job)
             job_count += 1
         except Exception as e:
             print(f"❌ Error: {e}")
-    
+
     print(f"✅ Finished! Checked {len(jobs)} jobs, processed {job_count} new ones")
 
 @check_for_jobs.before_loop
@@ -126,102 +87,77 @@ async def before_check_jobs():
     await bot.wait_until_ready()  # Wait for bot to be ready before first run
 
 
-# ==================== JOB FETCHING FUNCTIONS ====================
-
-def fetch_simplifyjobs():
-    """Fetch jobs from SimplifyJobs GitHub README"""
-    response = requests.get("https://raw.githubusercontent.com/SimplifyJobs/Summer2026-Internships/refs/heads/dev/README.md")
-    text = response.text
-    return text
-
-
-def fetch_adzuna_jobs(keywords="engineering intern", location="United States"):
-    """Fetch jobs from Adzuna API"""
-    base_url = "https://api.adzuna.com/v1/api/jobs/us/search/1"
-    params = {
-        "app_id": ADZUNA_APP_ID,
-        "app_key": ADZUNA_KEY,
-        "what": keywords,
-        "where": location,
-        "results_per_page": 5
-    }
-    response = requests.get(base_url, params=params)
-    
-    if response.status_code == 200:
-        data = response.json()
-        return data["results"]
-    else:
-        print(f"Error fetching Adzuna jobs: {response.status_code}")
-        return []
-    
-def fetch_all_adzuna_jobs():
-    """Fetch jobs from Adzuna using multiple search terms"""
-    all_jobs = []
-    for keyword in ADZUNA_SEARCH_TERMS:
-        print(f"Searching for: {keyword}")
-        jobs = fetch_adzuna_jobs(keywords=keyword)
-        all_jobs.extend(jobs)
-        print(f"  Found {len(jobs)} jobs")
-    
-    print(f"Total jobs fetched: {len(all_jobs)}")
-    return all_jobs
-
-
 # ==================== JOB PROCESSING FUNCTION ====================
 
-async def process_job(job_data):
+def build_job_embed(job, major, score):
+    """Builds a Jobright-style job card embed for a single major posting."""
+    embed = discord.Embed(
+        title=job.title,
+        url=job.url,
+        color=MAJOR_COLORS.get(major, discord.Color.light_grey()),
+    )
+    embed.add_field(name="Company", value=job.company or "Unknown", inline=True)
+    embed.add_field(name="Location", value=job.location or "N/A", inline=True)
+    if job.work_model:
+        embed.add_field(name="Work Model", value=job.work_model, inline=True)
+    if score > 1:
+        embed.add_field(name="Match score", value=str(score), inline=True)
+    embed.set_footer(text=f"Source: {job.source}" + (f" • Posted {job.posted_date}" if job.posted_date else ""))
+    return embed
+
+
+async def process_job(job):
     """Process a single job: categorize, check duplicates, post to Discord, save to database"""
     conn = database.create_connection()
+    try:
+        # Check if already exists
+        if database.check_job_exists(conn, job.url):
+            return
 
-    # Extract job data
-    title = job_data["title"]
-    description = job_data.get("description", "")
-    url = job_data["url"]
-    
-    # Check if already exists
-    if database.check_job_exists(conn, url):
-        return
-    
-    # Categorize by major
-    majors = categorizer.categorize_job(title, description)
-    if not majors:
-        return
-    
-    # Filter to only majors with configured channels
-    valid_majors = [major for major in majors if major in CHANNEL_IDS]
-    if not valid_majors:
-        return
-    
-    # Prepare data for database
-    db_job_data = {
-        "url": url,
-        "title": title,
-        "company": job_data["company"],
-        "majors": ",".join(valid_majors),
-        "posted": 0,
-        "channelIDs": ""
-    }
-    
-    # Insert into database
-    database.insert_job(conn, db_job_data)
-    print(f"✅ New job: {title} → {', '.join(valid_majors)}")
-    
-    # Post to Discord channels
-    posted_channels = []
-    for major in valid_majors:
-        channel_id = CHANNEL_IDS[major]
-        channel = bot.get_channel(channel_id)
-        
-        if channel is None:
-            print(f"❌ ERROR: Could not find channel for {major}")
-            continue
-        
-        message = f"**New {major.title()} Internship!**\n{title} at {job_data['company']}\n{url}"
-        await channel.send(message)
-        posted_channels.append(channel_id)
-    
-    # Update database with posted status
-    database.update_posted_status(conn, url, posted_channels)
+        # Categorize by major, ranked by relevance score
+        scored_majors = categorizer.categorize_job(job.title, job.description)
+        if not scored_majors:
+            return
+
+        # Filter to only majors with configured channels
+        valid_majors = [(major, score) for major, score in scored_majors if major in CHANNEL_IDS]
+        if not valid_majors:
+            return
+
+        major_names = [major for major, _ in valid_majors]
+
+        # Prepare data for database
+        db_job_data = {
+            "url": job.url,
+            "title": job.title,
+            "company": job.company,
+            "majors": ",".join(major_names),
+            "posted": 0,
+            "channelIDs": ""
+        }
+
+        # Insert into database
+        database.insert_job(conn, db_job_data)
+        print(f"✅ New job: {job.title} → {', '.join(major_names)}")
+
+        # Post to Discord channels
+        posted_channels = []
+        for major, score in valid_majors:
+            channel_id = CHANNEL_IDS[major]
+            channel = bot.get_channel(channel_id)
+
+            if channel is None:
+                print(f"❌ ERROR: Could not find channel for {major}")
+                continue
+
+            embed = build_job_embed(job, major, score)
+            await channel.send(embed=embed)
+            posted_channels.append(channel_id)
+
+        # Update database with posted status
+        database.update_posted_status(conn, job.url, posted_channels)
+    finally:
+        conn.close()
 
 
 # ==================== MAIN EXECUTION ====================
