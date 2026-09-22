@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% block title %}Overview{% endblock %}
+{% block content %}
+
+<div class="stats">
+  <div class="stat-box">
+    <h3>Fully posted</h3>
+    <div class="value status-1">{{ status_counts.get(1, 0) }}</div>
+  </div>
+  <div class="stat-box">
+    <h3>Pending / partial</h3>
+    <div class="value status-0">{{ status_counts.get(0, 0) }}</div>
+  </div>
+  <div class="stat-box">
+    <h3>Abandoned</h3>
+    <div class="value status-2">{{ status_counts.get(2, 0) }}</div>
+  </div>
+</div>
+
+<h2>Last run</h2>
+{% if last_run %}
+<table>
+  <tr><th>Started</th><th>Finished</th><th>Status</th><th>Fetched</th><th>Deduped</th><th>New</th><th>Posted</th><th>Errors</th></tr>
+  <tr>
+    <td>{{ last_run['started_at'] }}</td>
+    <td>{{ last_run['finished_at'] }}</td>
+    <td>{{ last_run['status'] }}</td>
+    <td>{{ last_run['fetched'] }}</td>
+    <td>{{ last_run['deduped'] }}</td>
+    <td>{{ last_run['new_jobs'] }}</td>
+    <td>{{ last_run['posted'] }}</td>
+    <td>{{ last_run['errors'] }}</td>
+  </tr>
+</table>
+{% else %}
+<p>No runs recorded yet.</p>
+{% endif %}
+
+<h2>Jobs by source</h2>
+<table>
+  <tr><th>Source</th><th>Count</th></tr>
+  {% for source, count in source_counts.items() %}
+  <tr><td>{{ source }}</td><td>{{ count }}</td></tr>
+  {% endfor %}
+</table>
+
+<h2>Jobs by major</h2>
+<table>
+  <tr><th>Major</th><th>Count</th></tr>
+  {% for major, count in major_counts.items() %}
+  <tr><td>{{ major }}</td><td>{{ count }}</td></tr>
+  {% endfor %}
+</table>
+
+<h2>Recent jobs (50)</h2>
+<table>
+  <tr><th>Found</th><th>Title</th><th>Company</th><th>Majors</th><th>Source</th><th>Status</th></tr>
+  {% for job in recent_jobs %}
+  <tr>
+    <td>{{ job['date_found'] }}</td>
+    <td><a href="{{ job['job_url'] }}" target="_blank" rel="noopener">{{ job['title'] }}</a></td>
+    <td>{{ job['company'] }}</td>
+    <td>{{ job['majors'] }}</td>
+    <td>{{ job['source'] }}</td>
+    <td class="status-{{ job['posted_to_discord'] }}">{{ job['posted_to_discord'] }}</td>
+  </tr>
+  {% endfor %}
+</table>
+
+{% endblock %}

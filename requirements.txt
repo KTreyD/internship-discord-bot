@@ -1,5 +1,5 @@
-discord.py
-python-dotenv
-requests
-anthropic
-pydantic
+discord.py==2.6.4
+python-dotenv==1.2.1
+requests==2.32.5
+anthropic==1.6.0
+pydantic==2.12.3

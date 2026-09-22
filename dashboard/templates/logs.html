@@ -1,0 +1,6 @@
+{% extends "base.html" %}
+{% block title %}Logs{% endblock %}
+{% block content %}
+<p>{{ log_path }}</p>
+<pre>{% for line in lines %}{{ line }}{% endfor %}</pre>
+{% endblock %}

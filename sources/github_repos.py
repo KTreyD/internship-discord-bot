@@ -6,13 +6,13 @@ Two README table styles are supported:
   - "html": raw <table>/<tr>/<td> markup, e.g. SimplifyJobs/Summer2026-Internships.
     Heavy CS/software/data coverage.
 """
+import logging
 import re
-import sys
-
-import requests
 
 from sources.base import Job
-from sources.util import strip_tags
+from sources.util import get_text, strip_tags
+
+log = logging.getLogger(__name__)
 
 GITHUB_REPOS = [
     {
@@ -110,29 +110,33 @@ def _parse_html_table(text: str, repo_name: str) -> list[Job]:
 
 
 def fetch_github_repo_jobs(repo: dict) -> list[Job]:
-    response = requests.get(repo["url"])
-    if response.status_code != 200:
-        print(f"Error fetching {repo['name']}: {response.status_code}")
+    text = get_text(repo["url"])
+    if text is None:
+        log.error("Error fetching %s", repo["name"])
         return []
 
     if repo["format"] == "markdown":
-        return _parse_markdown_table(response.text, repo["name"])
-    return _parse_html_table(response.text, repo["name"])
+        return _parse_markdown_table(text, repo["name"])
+    return _parse_html_table(text, repo["name"])
 
 
 def fetch_all_github_jobs() -> list[Job]:
     jobs: list[Job] = []
     for repo in GITHUB_REPOS:
-        print(f"Fetching GitHub source: {repo['name']}")
+        log.info("Fetching GitHub source: %s", repo["name"])
         repo_jobs = fetch_github_repo_jobs(repo)
         jobs.extend(repo_jobs)
-        print(f"  Found {len(repo_jobs)} jobs")
+        log.info("  Found %d jobs", len(repo_jobs))
 
-    print(f"Total GitHub jobs fetched: {len(jobs)}")
+    log.info("Total GitHub jobs fetched: %d", len(jobs))
     return jobs
 
 
 if __name__ == "__main__":
+    # See the note in sources/ats.py: stdout must be reconfigured to UTF-8
+    # before printing real job titles on a Windows console.
+    from logging_setup import configure_logging
+
+    configure_logging()
     for job in fetch_all_github_jobs():
-        line = f"[{job.source}] {job.title} @ {job.company} ({job.location}) -> {job.url}"
-        print(line.encode(sys.stdout.encoding or "utf-8", errors="replace").decode(sys.stdout.encoding or "utf-8"))
+        print(f"[{job.source}] {job.title} @ {job.company} ({job.location}) -> {job.url}")

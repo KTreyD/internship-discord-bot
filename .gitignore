@@ -9,5 +9,9 @@ __pycache__/
 # Database (you probably don't want to share this)
 *.db
 
+# Log files (RotatingFileHandler output, local runs)
+*.log
+
 # Virtual environment
 venv/
+.pytest_cache/

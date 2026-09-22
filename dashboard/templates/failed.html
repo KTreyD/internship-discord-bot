@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}Failed / Pending{% endblock %}
+{% block content %}
+
+<table>
+  <tr><th>Found</th><th>Title</th><th>Company</th><th>Status</th><th>Attempts</th><th>Last error</th><th>Last attempt</th></tr>
+  {% for job in jobs %}
+  <tr>
+    <td>{{ job['date_found'] }}</td>
+    <td><a href="{{ job['job_url'] }}" target="_blank" rel="noopener">{{ job['title'] }}</a></td>
+    <td>{{ job['company'] }}</td>
+    <td class="status-{{ job['posted_to_discord'] }}">{{ job['posted_to_discord'] }}</td>
+    <td>{{ job['post_attempts'] }}</td>
+    <td>{{ job['last_error'] or '' }}</td>
+    <td>{{ job['last_attempt_at'] or '' }}</td>
+  </tr>
+  {% else %}
+  <tr><td colspan="7">Nothing failed or pending.</td></tr>
+  {% endfor %}
+</table>
+
+{% endblock %}

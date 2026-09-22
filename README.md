@@ -90,11 +90,18 @@ GITHUB_REPOS = [
 
 ### ATS Sources (Greenhouse/Lever)
 
-Add company slugs to `GREENHOUSE_COMPANIES` / `LEVER_COMPANIES` in `sources/ats.py`. Find a company's slug from their careers page URL — `boards.greenhouse.io/acme` → `"acme"`, `jobs.lever.co/acme` → `"acme"`. Only add slugs you've verified return `200` (many companies have moved off these platforms):
+`sources/ats.py` fetches concurrently (`ThreadPoolExecutor`, 8 workers) with timeouts and retries, so a bad slug or slow host can't hang the daily run. Company slugs are grouped by sector so non-CS majors get real coverage:
+
 ```python
-GREENHOUSE_COMPANIES = ["stripe", "airbnb", ...]
+GREENHOUSE_COMPANIES_TECH = [...]           # -> computer science, computer, CIS, MIS
+GREENHOUSE_COMPANIES_ENERGY = [...]         # -> chemical, electrical, petroleum
+GREENHOUSE_COMPANIES_MANUFACTURING = [...]  # -> mechanical, industrial, electrical
+GREENHOUSE_COMPANIES_AEC = [...]            # -> civil, construction management (currently empty, see Known Limitations)
+GREENHOUSE_COMPANIES_BIOTECH = [...]        # -> biomedical, chemical
 LEVER_COMPANIES = ["palantir", ...]
 ```
+
+Find a company's slug from their careers page URL — `boards.greenhouse.io/acme` → `"acme"`, `jobs.lever.co/acme` → `"acme"`. **Verify live before committing a slug** — run `python -m sources.ats` and keep only slugs that return `200` with a plausible (nonzero) internship count; a dead slug is a 404 logged daily forever. `_INTERN_RE` matches `intern`, `internship`, `co-op`, and `coop`, since non-tech employers frequently title postings "Engineering Co-Op — Summer".
 
 ### Categorization
 
@@ -144,51 +151,72 @@ Secrets (`DISCORD_TOKEN`, `ADZUNA_ID`, `ADZUNA_KEY`, `ANTHROPIC_API_KEY`) live a
 ## Project Structure
 ```
 internship-discord-bot/
-├── bot.py                     # Main Discord bot, scheduling, embeds, job processing
-├── categorizer.py             # Job categorization by major (Claude Haiku, keyword fallback)
-├── database.py                # SQLite database operations
+├── bot.py                     # Discord bot, scheduling, fetch/dedup/categorize/post pipeline
+├── categorizer.py             # Job categorization by major (batched Claude Haiku, keyword fallback)
+├── database.py                # SQLite schema migration + batch-shaped queries
+├── dedup.py                   # Pure normalization/fingerprinting + in-batch near-dup collapse
+├── logging_setup.py           # Rotating file + stdout logging configuration
 ├── sources/
 │   ├── base.py                 # Shared Job dataclass returned by every source
-│   ├── util.py                  # Shared HTML-stripping helper
+│   ├── util.py                  # Shared HTTP helper (timeouts, retries) + HTML-stripping
 │   ├── adzuna.py                # Adzuna API fetcher
-│   ├── ats.py                   # Greenhouse/Lever direct ATS fetcher
+│   ├── ats.py                   # Greenhouse/Lever direct ATS fetcher (threaded, sector-grouped)
 │   └── github_repos.py          # GitHub README scraper (markdown + HTML table parsers)
-├── requirements.txt            # Python dependencies
+├── dashboard/                  # Local-only, read-only Flask monitoring UI (not deployed)
+│   ├── app.py
+│   └── templates/
+├── tests/                      # pytest suite (dedup, categorizer, database, ATS slug hygiene)
+├── .github/workflows/ci.yml    # Runs pytest on push/PR
+├── requirements.txt            # Pinned production dependencies
+├── requirements-dev.txt        # requirements.txt + pytest + flask
 ├── .env                        # Environment variables (not in git)
 ├── .gitignore                  # Git ignore file
 └── internships.db              # SQLite database (auto-created)
 ```
 
+## Development
+
+Install dev dependencies and run the test suite:
+```bash
+pip install -r requirements-dev.txt
+pytest
+```
+
+Run the local monitoring dashboard against a copy of the database (never point it at the live DB the bot is writing to and expect write access — it's opened read-only by design):
+```bash
+flask --app dashboard.app run
+```
+
 ## How It Works
 
-1. **Fetching**: Bot queries the Adzuna API, scrapes each configured GitHub README, and hits each configured Greenhouse/Lever company board, normalizing everything into a common `Job` shape
-2. **Categorization**: Each job is sent to Claude Haiku (or matched via word-boundary keywords as a fallback) to determine relevant majors, ranked by confidence/relevance
-3. **Duplicate Check**: Database is checked (by job URL) to prevent posting the same job twice
-4. **Posting**: Jobs are posted as Discord embeds to the appropriate channel(s) based on major
-5. **Storage**: Job details are saved to SQLite database with posting status
+1. **Retry backlog**: Any job left unposted from a previous run (crash, transient Discord outage) is retried first, before new volume is fetched.
+2. **Fetching**: Bot queries the Adzuna API, scrapes each configured GitHub README, and hits each configured Greenhouse/Lever company board concurrently (each source runs in a worker thread so a slow host never blocks the Discord heartbeat), normalizing everything into a common `Job` shape.
+3. **In-batch dedup**: `dedup.py` collapses near-duplicate postings within the same fetch (e.g. the same posting worded slightly differently across sources).
+4. **Duplicate check against history**: The remaining batch is checked against the database by exact URL and exact normalized company+title fingerprint, in one indexed lookup, to prevent posting the same job twice across runs.
+5. **Categorization**: New jobs are prompt-packed into chunks of ~15 and sent to Claude Haiku in one call per chunk (falling back to per-job, then keyword matching, on any failure or misalignment) to determine relevant majors, ranked by confidence/relevance.
+6. **Storage**: Job details are bulk-inserted into SQLite before posting (crash-safe).
+7. **Posting**: Jobs are posted as Discord embeds to the appropriate channel(s) based on major, rate-limited to ~1 message/second globally; failures are retried in-run and, if still incomplete, picked up by the next run's retry pass.
 
 ## API Rate Limits
 
 - **Adzuna Free Tier**: 250 API calls/month
-- **Current usage**: ~450 calls/month with all search terms
-- **Recommendation**: Adjust search terms or frequency if hitting limits
+- **Current usage**: `ADZUNA_SEARCH_TERMS` has 49 terms, fired once per daily run = ~1,470 calls/month — well over the free tier. Reduce the term list or the run frequency if you're on the free tier, or upgrade the plan.
 
 ## Known Limitations
 
-- Cross-source duplicates aren't detected: if the same posting appears on Adzuna, a GitHub list, and a company's ATS board, it's deduped only by exact URL, so it can post more than once under different links.
-- Greenhouse/Lever coverage is tech/startup-heavy by nature of which companies use those ATS platforms — it doesn't meaningfully add non-software engineering coverage the way the GitHub sources do.
-- LLM categorization cost scales with volume: at a few thousand new jobs/day this is a few dollars/month on Haiku, but there's no batching yet, so it's one API call per uncategorized job.
+- Greenhouse/Lever coverage is still tech/startup-skewed by nature of which companies use those ATS platforms. Sector-grouped slug lists for energy, manufacturing, and biotech add some non-software coverage (`sources/ats.py`), but an AEC/construction-tech list is still empty — none of the candidate company boards checked had a live, nonzero internship count at the time. GitHub sources remain the primary non-CS coverage.
+- LLM categorization runs `messages.parse` synchronously per prompt-packed chunk (up to 15 jobs) rather than through the Anthropic Message Batches API, which trades a larger latency win for simplicity — acceptable at this volume (once/day, a few hundred new jobs).
 
 ## Future Improvements
 
 - [x] Add GitHub README scraping as a second (and third) data source
 - [x] Add direct ATS (Greenhouse/Lever) source
 - [x] Replace keyword categorization with an LLM (Claude Haiku), with keyword fallback
-- [ ] Fuzzy dedup across sources (match on company + normalized title)
-- [ ] Batch LLM categorization calls to cut latency/API overhead
-- [ ] Implement error logging to file
-- [ ] Add retry logic for failed Discord posts
-- [ ] Add web dashboard for monitoring
+- [x] Fuzzy dedup across sources (match on company + normalized title) — see `dedup.py`
+- [x] Batch LLM categorization calls to cut latency/API overhead — see `categorizer.categorize_jobs`
+- [x] Implement error logging to file — see `logging_setup.py`
+- [x] Add retry logic for failed Discord posts — see `retry_unposted` in `bot.py`
+- [x] Add web dashboard for monitoring — see `dashboard/`, run locally only
 
 ## Contributing
 
