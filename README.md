@@ -228,7 +228,7 @@ MIT License - feel free to use and modify for your own Discord server.
 
 ## Author
 
-Built by [Your Name]
+Built by Trey De'De'
 
 ## Acknowledgments
 
